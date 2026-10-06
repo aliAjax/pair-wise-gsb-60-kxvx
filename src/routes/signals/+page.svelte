@@ -76,6 +76,17 @@
         <input class="input" name="batch" required placeholder="生产批号或软件版本" />
       </label>
       <label class="block">
+        <span class="mb-1 block text-sm font-medium">故障模式</span>
+        <select class="select" name="failureMode">
+          <option value="occlusion_alarm">阻塞报警异常</option>
+          <option value="battery_capacity">电池续航衰减</option>
+          <option value="thermal_overheat">充电温升异常</option>
+          <option value="measurement_deviation">测量结果偏差</option>
+          <option value="housing_damage">外壳结构破损</option>
+          <option value="unknown">待归类故障模式</option>
+        </select>
+      </label>
+      <label class="block">
         <span class="mb-1 block text-sm font-medium">来源类型</span>
         <select class="select" name="sourceType">
           <option value="complaint">投诉</option>

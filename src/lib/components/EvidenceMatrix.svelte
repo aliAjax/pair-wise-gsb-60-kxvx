@@ -40,6 +40,9 @@
       <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-500-400">
         <span>来源：{item.source}</span>
         <span>批号：{item.batch}</span>
+        {#if item.externalReportId}
+          <span class="font-medium text-teal-700">外部报告号：{item.externalReportId}</span>
+        {/if}
         <span>录入：{item.createdAt.slice(0, 10)}</span>
       </div>
     </article>

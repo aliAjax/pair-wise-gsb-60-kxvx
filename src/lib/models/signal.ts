@@ -16,6 +16,7 @@ export const createSignalSchema = z.object({
   title: z.string().trim().min(6, '信号标题至少 6 个字符'),
   product: z.string().trim().min(2, '请输入产品名称'),
   batch: z.string().trim().min(2, '请输入批号'),
+  failureMode: z.string().trim().min(2, '请填写故障模式'),
   sourceType: z.enum(['complaint', 'repair', 'adverse_event', 'field_report']),
   severity: z.coerce.number().int().min(1).max(5),
   occurredAt: z.string().min(1, '请选择发生日期'),
@@ -47,11 +48,15 @@ export const versionSchema = z.object({
   rationale: z.string().trim().min(6, '请填写判断依据')
 });
 
+/** 结论版本生命周期状态：重算保存成功前旧结论保持 invalidated，不会被误读为生效结论 */
+export const versionStates = ['active', 'invalidated', 'recomputing'] as const;
+
 export type SignalStatus = (typeof signalStatuses)[number];
 export type RiskLevel = (typeof riskLevels)[number];
 export type EvidenceStrength = (typeof evidenceStrengths)[number];
 export type SignalSourceType = z.infer<typeof createSignalSchema>['sourceType'];
 export type Disposition = z.infer<typeof versionSchema>['disposition'];
+export type VersionState = (typeof versionStates)[number];
 
 export interface EvidenceItem {
   id: string;
@@ -62,6 +67,10 @@ export interface EvidenceItem {
   batch: string;
   note: string;
   createdAt: string;
+  /** 该证据对应的外部报告号（投诉单号/维修单号/AE 号/现场报告号）；迁移回填的旧证据同样补齐 */
+  externalReportId?: string;
+  /** 导入批次 id，人工补充的测试/文献证据为空 */
+  importBatchId?: string;
 }
 
 export interface InvestigationTask {
@@ -80,6 +89,13 @@ export interface CaseVersion {
   disposition: Disposition;
   rationale: string;
   createdAt: string;
+  /** active：生效中；invalidated：因证据变化已失效待重算；recomputing：重算结论保存中（失败自动回退为 invalidated） */
+  state: VersionState;
+  /** 失效原因（外部报告号 / 证据编号摘要），便于审计追溯 */
+  invalidatedReason?: string;
+  invalidatedAt?: string;
+  /** 重算后被哪一版取代；旧版本永久保留，只标记失效 */
+  supersededBy?: string;
 }
 
 export interface AuditEntry {
@@ -95,6 +111,9 @@ export interface SignalCase {
   title: string;
   product: string;
   batch: string;
+  /** 故障模式（规范化编码），同产品+批号+故障模式的外部报告归并到同一案例 */
+  failureMode: string;
+  failureModeLabel: string;
   sourceType: SignalSourceType;
   status: SignalStatus;
   riskLevel: RiskLevel;
@@ -113,6 +132,8 @@ export interface SignalCase {
   versions: CaseVersion[];
   audit: AuditEntry[];
   reopenedCount: number;
+  /** 已入账外部报告号集合（幂等键），同一外部报告号全局只入账一次 */
+  externalReportIds: string[];
 }
 
 export interface SignalFilters {

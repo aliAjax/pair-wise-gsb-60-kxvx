@@ -1,6 +1,13 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import RiskBadge from '$lib/components/RiskBadge.svelte';
   import { signalStore } from '$lib/stores/signal-store';
+  import { resumePendingRecomputes, resumeUnfinishedImports, workbench } from '$lib/stores/workbench-store';
+
+  onMount(() => {
+    void resumeUnfinishedImports();
+    resumePendingRecomputes();
+  });
 
   $: signals = $signalStore;
   $: openSignals = signals.filter((signal) => signal.status !== 'closed');
@@ -12,6 +19,13 @@
       .filter((task) => task.status !== 'done' && task.dueAt < new Date().toISOString().slice(0, 10))
       .map((task) => ({ ...task, signalId: signal.id }))
   );
+  $: staleCaseIds = new Set(
+    $workbench.recomputeJobs.filter((job) => job.state !== 'done').map((job) => job.caseId)
+  );
+  $: activeImport = $workbench.importBatches.find(
+    (batch) => batch.id === $workbench.activeImportId && batch.state !== 'completed'
+  );
+  $: totalExternalReports = new Set(signals.flatMap((signal) => signal.externalReportIds)).size;
 
   $: metrics = [
     { label: '开放信号', value: openSignals.length, note: '含调查、观察与处置队列' },
@@ -33,8 +47,35 @@
     <h1 class="mt-1 text-2xl font-semibold tracking-normal">信号核查总览</h1>
     <p class="mt-2 text-sm text-surface-600-300">汇总投诉、维修、不良事件和现场报告，按风险推进核查闭环。</p>
   </div>
-  <a class="btn variant-filled-primary" href="/signals">进入信号台账</a>
+  <a class="btn variant-filled-primary" href="/imports">导入离线报告包</a>
 </div>
+
+{#if activeImport}
+  <section class="mb-6 rounded border border-amber-500 bg-amber-50 p-4 text-sm text-amber-950">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="font-semibold">
+          存在{activeImport.state === 'failed' ? '失败待续传的' : '进行中的'}报告包导入：{activeImport.packageName}
+        </p>
+        <p class="mt-1">
+          已入账 {activeImport.ingestedCount} 条 · 重复跳过 {activeImport.duplicateCount} 条 · 失败 {activeImport.failedCount} 条，
+          {activeImport.state === 'failed'
+            ? '可从未完成处继续，已写入部分不会形成半套案例。'
+            : '逐条事务提交中…'}
+        </p>
+      </div>
+      <a class="btn btn-sm variant-filled-primary" href="/imports">前往续作</a>
+    </div>
+  </section>
+{/if}
+
+{#if staleCaseIds.size > 0}
+  <section
+    class="mb-6 rounded border border-teal-600/50 bg-teal-50 p-4 text-sm text-teal-900 dark:bg-teal-950/30 dark:text-teal-200"
+  >
+    {staleCaseIds.size} 个案例的旧结论因新证据失效：批次统计与总览已按新证据更新，重算结论保存成功后自动恢复生效。
+  </section>
+{/if}
 
 <section class="workspace-grid mb-6">
   {#each metrics as metric}
@@ -44,6 +85,19 @@
       <p class="mt-2 text-xs text-surface-500-400">{metric.note}</p>
     </article>
   {/each}
+</section>
+
+<section class="workspace-grid mb-6">
+  <article class="col-span-12 rounded border border-surface-300-700 bg-surface-100-900 p-4 sm:col-span-6 xl:col-span-3">
+    <p class="text-sm text-surface-500-400">已入账唯一外部报告号</p>
+    <p class="metric-value mt-2 text-3xl font-semibold">{totalExternalReports}</p>
+    <p class="mt-2 text-xs text-surface-500-400">同一外部报告号重复导入只入账一次（含旧数据回填标识）</p>
+  </article>
+  <article class="col-span-12 rounded border border-surface-300-700 bg-surface-100-900 p-4 sm:col-span-6 xl:col-span-3">
+    <p class="text-sm text-surface-500-400">结论失效 / 重算中案例</p>
+    <p class="metric-value mt-2 text-3xl font-semibold">{staleCaseIds.size}</p>
+    <p class="mt-2 text-xs text-surface-500-400">重算保存成功前，旧结论保持失效且页面明确提示</p>
+  </article>
 </section>
 
 <div class="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">

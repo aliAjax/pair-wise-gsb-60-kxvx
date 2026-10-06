@@ -1,48 +1,40 @@
 import { browser } from '$app/environment';
+import { derived, get, type Readable } from 'svelte/store';
 import type {
   AuditEntry,
   CaseVersion,
   EvidenceItem,
   InvestigationTask,
+  RiskLevel,
   SignalCase,
-  SignalStatus,
-  RiskLevel
+  SignalStatus
 } from '$lib/models/signal';
+import { failureModeLabel } from '$lib/models/report-package';
 import { seedSignals } from '$lib/services/seed';
-import { get, writable } from 'svelte/store';
-
-const STORAGE_KEY = 'medical-safety-signals-v1';
+import {
+  addAuditEntry,
+  addCase,
+  addEvidenceToCase,
+  addVersionToCase,
+  makeId,
+  now,
+  reopenCase,
+  replaceTaskInCase,
+  resetWorkbench,
+  transitionCase,
+  workbench
+} from './workbench-store';
 
 function cloneSeed(): SignalCase[] {
   return structuredClone(seedSignals);
 }
 
-function readPersisted(): SignalCase[] {
-  if (!browser) return cloneSeed();
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as SignalCase[]) : cloneSeed();
-  } catch {
-    return cloneSeed();
-  }
-}
-
-const internal = writable<SignalCase[]>(readPersisted());
-
-if (browser) {
-  internal.subscribe((value) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-  });
-}
-
-function now() {
-  return new Date().toISOString();
-}
-
-function makeId(prefix: string) {
-  return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`;
-}
+/**
+ * 兼容层：v2 起信号案例由 workbench-store 统一在事务内维护
+ * （案例 + 入账台账 + 批次项 + 重算任务）。这里对外继续暴露案例数组 store，
+ * 让现有页面 / 服务无需关心存储结构变化。
+ */
+const cases: Readable<SignalCase[]> = derived(workbench, ($workbench) => $workbench.signals);
 
 function riskFromSeverity(severity: number): RiskLevel {
   if (severity >= 5) return 'critical';
@@ -51,151 +43,43 @@ function riskFromSeverity(severity: number): RiskLevel {
   return 'low';
 }
 
-function statusLabel(status: SignalStatus) {
-  const labels: Record<SignalStatus, string> = {
-    new: '待分派',
-    investigating: '调查中',
-    observed: '持续观察',
-    action_required: '待处置',
-    review: '复核中',
-    closed: '已关闭'
-  };
-  return labels[status];
-}
-
-function appendAudit(signal: SignalCase, actor: string, action: string, detail: string) {
-  signal.audit.unshift({
-    id: makeId('AUD'),
-    actor,
-    action,
-    detail,
-    createdAt: now()
-  });
-  signal.updatedAt = now();
-}
-
 export const signalStore = {
-  subscribe: internal.subscribe,
+  subscribe: cases.subscribe,
 
   add(signal: SignalCase) {
-    internal.update((items) => [signal, ...items]);
-  },
-
-  create(input: Omit<SignalCase, 'id' | 'openedAt' | 'updatedAt' | 'audit' | 'reopenedCount'>) {
-    const createdAt = now();
-    const signal: SignalCase = {
-      ...input,
-      id: `SIG-${new Date().getFullYear()}-${String(get(internal).length + 20).padStart(3, '0')}`,
-      openedAt: createdAt,
-      updatedAt: createdAt,
-      reopenedCount: 0,
-      audit: [
-        {
-          id: makeId('AUD'),
-          actor: input.owner,
-          action: '建立信号',
-          detail: `按${input.sourceType}来源建立核查任务。`,
-          createdAt
-        }
-      ]
-    };
-    internal.update((items) => [signal, ...items]);
-    return signal;
+    addCase(signal);
   },
 
   transition(id: string, nextStatus: SignalStatus, reason: string, actor: string) {
-    internal.update((items) =>
-      items.map((signal) => {
-        if (signal.id !== id) return signal;
-        const updated = structuredClone(signal);
-        const previous = updated.status;
-        updated.status = nextStatus;
-        if (nextStatus === 'action_required' && updated.riskLevel === 'low') {
-          updated.riskLevel = 'medium';
-        }
-        appendAudit(
-          updated,
-          actor,
-          '状态流转',
-          `${statusLabel(previous)} -> ${statusLabel(nextStatus)}；依据：${reason}`
-        );
-        return updated;
-      })
-    );
+    transitionCase(id, nextStatus, reason, actor);
   },
 
   addEvidence(id: string, evidence: EvidenceItem, actor: string) {
-    internal.update((items) =>
-      items.map((signal) => {
-        if (signal.id !== id) return signal;
-        const updated = structuredClone(signal);
-        updated.evidence.unshift(evidence);
-        appendAudit(
-          updated,
-          actor,
-          '新增证据',
-          `${evidence.title}，证据强度：${evidence.strength}`
-        );
-        return updated;
-      })
-    );
+    addEvidenceToCase(id, evidence, actor);
   },
 
   addVersion(id: string, version: CaseVersion, actor: string) {
-    internal.update((items) =>
-      items.map((signal) => {
-        if (signal.id !== id) return signal;
-        const updated = structuredClone(signal);
-        updated.versions.unshift(version);
-        appendAudit(updated, actor, '形成版本', `版本 V${version.version}：${version.summary}`);
-        return updated;
-      })
-    );
+    addVersionToCase(id, version, actor);
   },
 
   reopen(id: string, actor: string, reason: string) {
-    internal.update((items) =>
-      items.map((signal) => {
-        if (signal.id !== id) return signal;
-        const updated = structuredClone(signal);
-        updated.status = 'investigating';
-        updated.reopenedCount += 1;
-        appendAudit(updated, actor, '重新打开', reason);
-        return updated;
-      })
-    );
+    reopenCase(id, actor, reason);
   },
 
   replaceTask(id: string, task: InvestigationTask) {
-    internal.update((items) =>
-      items.map((signal) => {
-        if (signal.id !== id) return signal;
-        const updated = structuredClone(signal);
-        updated.tasks = updated.tasks.map((item) => (item.id === task.id ? task : item));
-        appendAudit(updated, task.owner, '更新任务', `${task.title}：${task.status}`);
-        return updated;
-      })
-    );
+    replaceTaskInCase(id, task);
   },
 
   addAudit(id: string, entry: AuditEntry) {
-    internal.update((items) =>
-      items.map((signal) => {
-        if (signal.id !== id) return signal;
-        const updated = structuredClone(signal);
-        updated.audit.unshift(entry);
-        updated.updatedAt = entry.createdAt;
-        return updated;
-      })
-    );
+    addAuditEntry(id, entry);
   },
 
   reset() {
-    internal.set(cloneSeed());
+    resetWorkbench();
   },
 
   getSnapshot() {
-    return get(internal);
+    return get(workbench).signals;
   }
 };
 
@@ -203,17 +87,21 @@ export function createSignalFromForm(input: {
   title: string;
   product: string;
   batch: string;
+  failureMode: string;
   sourceType: SignalCase['sourceType'];
   severity: number;
   occurredAt: string;
   description: string;
 }): SignalCase {
   const nowIso = now();
+  const failureMode = input.failureMode || 'unknown';
   return {
-    id: `SIG-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
+    id: makeId('SIG'),
     title: input.title,
     product: input.product,
     batch: input.batch,
+    failureMode,
+    failureModeLabel: failureModeLabel(failureMode),
     sourceType: input.sourceType,
     status: 'new',
     riskLevel: riskFromSeverity(input.severity),
@@ -243,10 +131,17 @@ export function createSignalFromForm(input: {
         id: makeId('AUD'),
         actor: '安全台账',
         action: '建立信号',
-        detail: '由人工登记表单创建初始信号。',
+        detail: '由人工登记表单创建初始信号（尚无外部报告号，后续可与离线报告包归并）。',
         createdAt: nowIso
       }
     ],
-    reopenedCount: 0
+    reopenedCount: 0,
+    externalReportIds: []
   };
+}
+
+// 服务器端表单动作不依赖浏览器状态时需要的兜底
+export function getSeedSnapshot(): SignalCase[] {
+  if (!browser) return cloneSeed();
+  return get(workbench).signals;
 }

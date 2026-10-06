@@ -1,18 +1,32 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
+  import { onMount } from 'svelte';
   import EvidenceMatrix from '$lib/components/EvidenceMatrix.svelte';
   import RiskBadge from '$lib/components/RiskBadge.svelte';
   import type { AuditEntry, CaseVersion, EvidenceItem, SignalStatus } from '$lib/models/signal';
   import { exportSignalReport } from '$lib/services/signal-service';
   import { signalStore } from '$lib/stores/signal-store';
+  import { resumePendingRecomputes, retryRecompute, workbench } from '$lib/stores/workbench-store';
   import type { ActionData, PageData } from './$types';
 
   export let data: PageData;
   export let form: ActionData;
 
+  onMount(() => resumePendingRecomputes());
+
   $: signal = $signalStore.find((item) => item.id === data.id);
   $: nextVersion = (signal?.versions[0]?.version ?? 0) + 1;
+  $: activeVersion = signal?.versions.find((version) => version.state === 'active');
+  $: recomputeJob = $workbench.recomputeJobs.find((job) => job.caseId === data.id);
+  $: recomputing = recomputeJob?.state === 'recomputing';
+  $: recomputeFailed = recomputeJob?.state === 'failed';
+
+  const dispositionLabels: Record<string, string> = {
+    continue_observation: '继续观察',
+    risk_communication: '风险沟通',
+    corrective_action: '纠正措施'
+  };
 
   const statusOptions: Array<{ value: SignalStatus; label: string }> = [
     { value: 'investigating', label: '转入调查' },
@@ -68,6 +82,41 @@
     <div class="mb-5 rounded border border-error-300 bg-error-50 p-3 text-sm text-error-900">{form.message}</div>
   {/if}
 
+  {#if signal.versions.length === 0 && !recomputing}
+    <div class="mb-5 rounded border border-teal-600/50 bg-teal-50 p-4 text-sm text-teal-900 dark:bg-teal-950/30 dark:text-teal-200">
+      该案例由外部报告新建，结论重算完成后将在此显示首版生效结论。
+    </div>
+  {:else if recomputing}
+    <div class="mb-5 rounded border border-amber-500 bg-amber-50 p-4 text-sm text-amber-950">
+      <p class="font-semibold">结论重算保存中…</p>
+      <p class="mt-1">证据矩阵已更新，批次统计与总览按新证据计算；旧结论暂不生效，重算保存成功后自动恢复。</p>
+    </div>
+  {:else if recomputeFailed}
+    <div class="mb-5 rounded border border-error-300 bg-error-50 p-4 text-sm text-error-900">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="font-semibold">结论重算保存失败，旧结论保持失效</p>
+          <p class="mt-1">{recomputeJob?.error}统计与审计已按新证据更新，不会回退到旧口径。</p>
+        </div>
+        <button class="btn btn-sm variant-filled-primary" type="button" on:click={() => retryRecompute(signal.id)}>
+          重试重算保存
+        </button>
+      </div>
+    </div>
+  {:else if !activeVersion}
+    <div class="mb-5 rounded border border-amber-500 bg-amber-50 p-4 text-sm text-amber-950">
+      当前没有生效结论：旧版本已因证据变化失效，等待重算恢复或人工形成新版本。
+    </div>
+  {:else}
+    <div class="mb-5 rounded border border-emerald-600/40 bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p class="font-semibold">当前生效结论 · V{activeVersion.version} · {dispositionLabels[activeVersion.disposition]}</p>
+        <span class="badge bg-emerald-100 text-emerald-900">生效中</span>
+      </div>
+      <p class="mt-2">{activeVersion.summary}</p>
+    </div>
+  {/if}
+
   <section class="workspace-grid mb-6">
     <article class="col-span-12 rounded border border-surface-300-700 bg-surface-100-900 p-4 xl:col-span-8">
       <div class="grid gap-5 md:grid-cols-2">
@@ -75,6 +124,13 @@
           <p class="text-xs font-medium text-surface-500-400">产品与批号</p>
           <p class="mt-1 font-medium">{signal.product}</p>
           <p class="mt-1 text-sm text-surface-600-300">{signal.affectedBatches.join(' / ')}</p>
+          <p class="mt-2 text-xs text-surface-500-400">
+            故障模式：<span class="font-medium text-surface-700-300">{signal.failureModeLabel}</span>
+            <span class="ml-1 font-mono">({signal.failureMode})</span>
+          </p>
+          <p class="mt-1 text-xs text-surface-500-400">
+            已入账外部报告：<span class="font-medium text-teal-700">{signal.externalReportIds.length}</span> 个唯一报告号
+          </p>
         </div>
         <div>
           <p class="text-xs font-medium text-surface-500-400">调查负责人</p>
@@ -276,16 +332,34 @@
       <h2 class="font-semibold">结论版本</h2>
       <div class="mt-4 space-y-4">
         {#each signal.versions as version}
-          <article class="border-l-2 border-teal-600 pl-4">
+          <article
+            class="border-l-2 pl-4 {version.state === 'active'
+              ? 'border-teal-600'
+              : version.state === 'recomputing'
+                ? 'border-amber-500'
+                : 'border-surface-400 opacity-75'}"
+          >
             <div class="flex flex-wrap items-center justify-between gap-2">
               <p class="font-medium">V{version.version} · {version.author}</p>
-              <span class="text-xs text-surface-500-400">{version.createdAt.slice(0, 10)}</span>
+              <div class="flex items-center gap-2">
+                {#if version.state === 'active'}
+                  <span class="badge bg-emerald-100 text-emerald-900">生效中</span>
+                {:else if version.state === 'recomputing'}
+                  <span class="badge bg-amber-100 text-amber-950">重算保存中</span>
+                {:else}
+                  <span class="badge bg-surface-200-800">已失效</span>
+                {/if}
+                <span class="text-xs text-surface-500-400">{version.createdAt.slice(0, 10)}</span>
+              </div>
             </div>
             <p class="mt-2 text-sm">{version.summary}</p>
             <p class="mt-2 text-xs text-surface-500-400">{version.rationale}</p>
+            {#if version.state === 'invalidated' && version.invalidatedReason}
+              <p class="mt-2 text-xs text-amber-700">失效原因：{version.invalidatedReason}</p>
+            {/if}
           </article>
         {:else}
-          <p class="text-sm text-surface-500-400">尚未形成正式结论版本。</p>
+          <p class="text-sm text-surface-500-400">尚未形成正式结论版本（新案例的首版结论将由重算自动生成）。</p>
         {/each}
       </div>
     </section>

@@ -4,6 +4,7 @@
   const navItems = [
     { href: '/', label: '总览', short: '览' },
     { href: '/signals', label: '信号台账', short: '信' },
+    { href: '/imports', label: '报告包导入', short: '包' },
     { href: '/trends', label: '趋势核对', short: '趋' },
     { href: '/batches', label: '批次追踪', short: '批' },
     { href: '/audit', label: '审计报告', short: '审' }
