@@ -33,7 +33,12 @@
               {signal.id}
             </a>
             <p class="mt-1 max-w-[380px] text-sm text-surface-600-300">{signal.title}</p>
-            <p class="mt-1 text-xs text-surface-500-400">{sourceLabels[signal.sourceType]}来源</p>
+            <p class="mt-1 text-xs text-surface-500-400">
+              {sourceLabels[signal.sourceType]}来源 · {signal.failureModeLabel}
+              {#if signal.recomputePending}
+                <span class="ml-1 text-amber-700">· 结论待重算</span>
+              {/if}
+            </p>
           </td>
           <td>
             <p class="font-medium">{signal.product}</p>

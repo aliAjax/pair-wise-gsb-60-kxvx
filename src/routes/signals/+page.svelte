@@ -18,6 +18,11 @@
   };
   let showCreate = false;
 
+  // 报告包导入、重算等 store 变化后刷新台账查询
+  signalStore.subscribe(() => {
+    queryClient.invalidateQueries({ queryKey: ['signals'] });
+  });
+
   const query = createQuery({
     queryKey: ['signals', filters],
     queryFn: () => listSignals(filters)

@@ -6,6 +6,8 @@ export const seedSignals: SignalCase[] = [
     title: '输注泵阻塞报警集中发生于同一批管路',
     product: '智能输液泵 IP-800',
     batch: 'IP8-260401',
+    failureMode: 'occlusion_alarm',
+    failureModeLabel: '阻塞报警',
     sourceType: 'complaint',
     status: 'investigating',
     riskLevel: 'high',
@@ -75,7 +77,9 @@ export const seedSignals: SignalCase[] = [
         summary: '投诉与维修记录支持传感器装配异常假设，尚需现场数据确认。',
         disposition: 'continue_observation',
         rationale: '实验室留样未复现，当前证据不足以直接启动召回。',
-        createdAt: '2026-09-24T10:00:00.000Z'
+        createdAt: '2026-09-24T10:00:00.000Z',
+        state: 'active' as const,
+        kind: 'manual' as const
       }
     ],
     audit: [
@@ -94,13 +98,16 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-09-10T03:00:00.000Z'
       }
     ],
-    reopenedCount: 0
+    reopenedCount: 0,
+    externalReportIds: []
   },
   {
     id: 'SIG-2026-015',
     title: '监护仪电池续航低于标称值',
     product: '多参数监护仪 M12',
     batch: 'M12-251118',
+    failureMode: 'battery_endurance',
+    failureModeLabel: '电池续航',
     sourceType: 'repair',
     status: 'observed',
     riskLevel: 'medium',
@@ -153,7 +160,9 @@ export const seedSignals: SignalCase[] = [
         summary: '维持观察，补充充电环境分层分析。',
         disposition: 'continue_observation',
         rationale: '暂无临床风险升级证据，但衰减比例超出预期。',
-        createdAt: '2026-09-25T04:25:00.000Z'
+        createdAt: '2026-09-25T04:25:00.000Z',
+        state: 'active' as const,
+        kind: 'manual' as const
       }
     ],
     audit: [
@@ -165,13 +174,16 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-08-23T05:00:00.000Z'
       }
     ],
-    reopenedCount: 0
+    reopenedCount: 0,
+    externalReportIds: []
   },
   {
     id: 'SIG-2026-011',
     title: '影像工作站测量工具结果偶发偏差',
     product: '影像工作站 WS-5',
     batch: 'SW-5.3.1',
+    failureMode: 'measurement_deviation',
+    failureModeLabel: '测量偏差',
     sourceType: 'field_report',
     status: 'closed',
     riskLevel: 'low',
@@ -214,7 +226,9 @@ export const seedSignals: SignalCase[] = [
         summary: '确认版本修复有效，关闭信号并保留 90 天监测。',
         disposition: 'corrective_action',
         rationale: '修复版本已解决绘制坐标缓存问题。',
-        createdAt: '2026-08-18T09:30:00.000Z'
+        createdAt: '2026-08-18T09:30:00.000Z',
+        state: 'active' as const,
+        kind: 'manual' as const
       }
     ],
     audit: [
@@ -226,13 +240,16 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-08-18T09:30:00.000Z'
       }
     ],
-    reopenedCount: 0
+    reopenedCount: 0,
+    externalReportIds: []
   },
   {
     id: 'SIG-2026-019',
     title: '除颤器充电过程温升异常',
     product: '双相波除颤器 D9',
     batch: 'D9-260722',
+    failureMode: 'thermal_overheat',
+    failureModeLabel: '温升异常',
     sourceType: 'adverse_event',
     status: 'action_required',
     riskLevel: 'critical',
@@ -292,7 +309,9 @@ export const seedSignals: SignalCase[] = [
         summary: '初判为充电模组焊接缺陷，进入纠正措施与风险沟通准备。',
         disposition: 'risk_communication',
         rationale: '已有拆机证据支持批次性制造偏差。',
-        createdAt: '2026-09-28T11:40:00.000Z'
+        createdAt: '2026-09-28T11:40:00.000Z',
+        state: 'active' as const,
+        kind: 'manual' as const
       }
     ],
     audit: [
@@ -304,6 +323,7 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-09-28T11:40:00.000Z'
       }
     ],
-    reopenedCount: 0
+    reopenedCount: 0,
+    externalReportIds: []
   }
 ];

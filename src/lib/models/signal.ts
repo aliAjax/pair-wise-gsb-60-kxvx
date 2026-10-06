@@ -11,6 +11,7 @@ export const signalStatuses = [
 
 export const riskLevels = ['low', 'medium', 'high', 'critical'] as const;
 export const evidenceStrengths = ['strong', 'moderate', 'weak', 'contrary'] as const;
+export const conclusionStates = ['active', 'invalidated', 'pending_recompute'] as const;
 
 export const createSignalSchema = z.object({
   title: z.string().trim().min(6, '信号标题至少 6 个字符'),
@@ -52,6 +53,7 @@ export type RiskLevel = (typeof riskLevels)[number];
 export type EvidenceStrength = (typeof evidenceStrengths)[number];
 export type SignalSourceType = z.infer<typeof createSignalSchema>['sourceType'];
 export type Disposition = z.infer<typeof versionSchema>['disposition'];
+export type ConclusionState = (typeof conclusionStates)[number];
 
 export interface EvidenceItem {
   id: string;
@@ -62,6 +64,9 @@ export interface EvidenceItem {
   batch: string;
   note: string;
   createdAt: string;
+  /** 外部报告包来源：外部报告号 + 报告包批次号；测试/文献证据可为空 */
+  externalReportId?: string;
+  importBatchId?: string;
 }
 
 export interface InvestigationTask {
@@ -80,6 +85,13 @@ export interface CaseVersion {
   disposition: Disposition;
   rationale: string;
   createdAt: string;
+  /** active=当前有效；invalidated=新证据到达后失效；pending_recompute=重算未保存成功 */
+  state: ConclusionState;
+  /** manual=人工形成；auto=新证据触发的自动重算版本 */
+  kind?: 'manual' | 'auto';
+  /** 失效/失效原因（触发该版本失效的外部报告号或证据） */
+  invalidatedReason?: string;
+  invalidatedAt?: string;
 }
 
 export interface AuditEntry {
@@ -88,6 +100,9 @@ export interface AuditEntry {
   action: string;
   detail: string;
   createdAt: string;
+  /** 关联外部报告号或报告包批次号，用于跨对象追溯 */
+  externalReportId?: string;
+  importBatchId?: string;
 }
 
 export interface SignalCase {
@@ -95,6 +110,10 @@ export interface SignalCase {
   title: string;
   product: string;
   batch: string;
+  /** 归并键之一：归一化故障模式编码，如 occlusion_alarm */
+  failureMode: string;
+  /** 故障模式中文标签，如 阻塞报警 */
+  failureModeLabel: string;
   sourceType: SignalSourceType;
   status: SignalStatus;
   riskLevel: RiskLevel;
@@ -113,6 +132,11 @@ export interface SignalCase {
   versions: CaseVersion[];
   audit: AuditEntry[];
   reopenedCount: number;
+  /** 已入账外部报告号集合（同一外部报告号只入账一次） */
+  externalReportIds: string[];
+  /** 结论是否等待重新计算（true 时旧结论已失效，新版本尚未保存成功） */
+  recomputePending?: boolean;
+  recomputeReason?: string;
 }
 
 export interface SignalFilters {

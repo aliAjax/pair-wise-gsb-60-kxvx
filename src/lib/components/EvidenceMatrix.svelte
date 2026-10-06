@@ -41,6 +41,12 @@
         <span>来源：{item.source}</span>
         <span>批号：{item.batch}</span>
         <span>录入：{item.createdAt.slice(0, 10)}</span>
+        {#if item.externalReportId}
+          <span class="font-mono text-teal-700">外部报告：{item.externalReportId}</span>
+        {/if}
+        {#if item.importBatchId}
+          <span class="font-mono">报告包：{item.importBatchId}</span>
+        {/if}
       </div>
     </article>
   {/each}
